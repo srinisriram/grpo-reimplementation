@@ -1,0 +1,25 @@
+seed: 7
+model:
+  name: Qwen/Qwen2.5-0.5B-Instruct
+  lora_rank: 8
+  lora_alpha: 16
+  target_modules: [q_proj, v_proj]
+data:
+  dataset: gsm8k
+  config: main
+  max_train_examples: 16
+  max_eval_examples: 16
+training:
+  output_dir: outputs/smoke
+  per_device_batch_size: 1
+  group_size: 2
+  max_new_tokens: 64
+  learning_rate: 2.0e-5
+  max_steps: 5
+  gradient_accumulation_steps: 1
+  kl_coef: 0.04
+  clip_range: 0.2
+  seed: 7
+  ppo_epochs: 1
+  save_steps: 2
+

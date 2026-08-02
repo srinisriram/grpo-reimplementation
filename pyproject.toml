@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grpo-reimplementation"
+version = "0.1.0"
+description = "Learning-first GRPO implementation scaffold"
+requires-python = ">=3.11"
+dependencies = [
+  "torch>=2.2",
+  "transformers>=4.45",
+  "datasets>=2.19",
+  "peft>=0.12",
+  "accelerate>=0.33",
+  "pyyaml>=6.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+wandb = ["wandb>=0.17"]
+
+[project.scripts]
+grpo-train = "grpo.train:main"
+grpo-eval = "grpo.evaluate:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+  "integration: requires model and dataset dependencies",
+  "e2e: slow end-to-end test",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
