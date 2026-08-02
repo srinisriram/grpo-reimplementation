@@ -108,6 +108,8 @@ def main() -> None:
 
     model, tokenizer = load_policy(config)
     device = next(model.parameters()).device
+    print(f"Model loaded on device: {device}"
+          + (f" ({torch.cuda.get_device_name(device)})" if device.type == "cuda" else ""))
 
     train_examples = list(load_gsm8k("train", config=config.dataset_config, limit=config.max_train_examples))
     trainable_params = [p for p in model.parameters() if p.requires_grad]
