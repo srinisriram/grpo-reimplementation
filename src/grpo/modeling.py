@@ -24,9 +24,9 @@ def load_base_model(model_name: str, device: str):
     ).to(device)
 
 
-def load_policy(config: TrainingConfig):
+def load_policy(config: TrainingConfig, device: str | None = None):
     tokenizer = load_tokenizer(config.model_name)
-    model = load_base_model(config.model_name, resolve_device())
+    model = load_base_model(config.model_name, device or resolve_device())
     model.gradient_checkpointing_enable()
     # With the base model frozen and only LoRA adapters trainable, the input
     # embeddings need requires_grad=True or gradient checkpointing has nothing
