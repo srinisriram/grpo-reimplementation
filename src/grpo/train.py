@@ -16,6 +16,14 @@ from .rewards import gsm8k_reward
 from .rollouts import RolloutBatch, generate_groups
 
 
+def _reduce_mean(accelerator: Accelerator, value: float) -> float:
+    # Collective op: every process must call this, even though only the main
+    # process ends up printing the result, or processes that skip it will hang
+    # waiting for the others to participate in the all-reduce.
+    tensor = torch.tensor(value, device=accelerator.device)
+    return accelerator.reduce(tensor, reduction="mean").item()
+
+
 def _forward_logps(model, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
     logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
     return completion_logprobs(logits, input_ids)
@@ -130,12 +138,19 @@ def main() -> None:
             optimizer.step()
             scheduler.step()
 
-        mean_reward = sum(mb["mean_reward"] for mb in micro_batches) / len(micro_batches)
+        local_mean_reward = sum(mb["mean_reward"] for mb in micro_batches) / len(micro_batches)
+        # Each process only ever sees its own local slice of the step's data;
+        # reduce across all processes so the printed numbers reflect the full
+        # combined batch, not just whichever process happens to be main.
+        mean_reward = _reduce_mean(accelerator, local_mean_reward)
+        policy_loss = _reduce_mean(accelerator, last_metrics["policy_loss"].item())
+        kl = _reduce_mean(accelerator, last_metrics["kl"].item())
+        clip_fraction = _reduce_mean(accelerator, last_metrics["clip_fraction"].item())
         accelerator.print(
             f"step {step}/{config.max_steps} reward={mean_reward:.3f} "
-            f"policy_loss={last_metrics['policy_loss'].item():.4f} "
-            f"kl={last_metrics['kl'].item():.4f} "
-            f"clip_fraction={last_metrics['clip_fraction'].item():.3f}"
+            f"policy_loss={policy_loss:.4f} "
+            f"kl={kl:.4f} "
+            f"clip_fraction={clip_fraction:.3f}"
         )
 
         if step % save_steps == 0 or step == config.max_steps:
