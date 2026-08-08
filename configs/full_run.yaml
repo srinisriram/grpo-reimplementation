@@ -13,7 +13,7 @@ training:
   output_dir: outputs/full_run
   per_device_batch_size: 2
   group_size: 2
-  max_new_tokens: 128
+  max_new_tokens: 512
   learning_rate: 2.0e-5
   max_steps: 100
   gradient_accumulation_steps: 1
