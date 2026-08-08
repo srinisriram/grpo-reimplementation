@@ -157,6 +157,7 @@ def main() -> None:
             _save_checkpoint(accelerator, model, config.output_dir, str(step))
 
     accelerator.print(f"Training complete. Checkpoints in {config.output_dir}")
+    accelerator.end_training()
 
 
 if __name__ == "__main__":
