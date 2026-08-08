@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 
 import torch
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedDataParallelKwargs
 from transformers import get_linear_schedule_with_warmup
 
 from .config import TrainingConfig, load_config
@@ -90,7 +90,16 @@ def main() -> None:
     random.seed(config.seed)
     torch.manual_seed(config.seed)
 
-    accelerator = Accelerator()
+    # static_graph=True: gradient checkpointing recomputes parts of the forward
+    # pass during backward, which can confuse DDP's default gradient-sync hook
+    # ordering. Without this, DDP's bucket-rebuild heuristic can silently lock
+    # onto a broken sync configuration a few iterations in -- forward-pass loss
+    # values keep looking normal, but the synced gradient reaching the optimizer
+    # stops actually updating the weights. static_graph tells DDP the same
+    # parameters need gradients every iteration, which is true here (same
+    # architecture every step) and is the documented fix for this interaction.
+    ddp_kwargs = DistributedDataParallelKwargs(static_graph=True)
+    accelerator = Accelerator(kwargs_handlers=[ddp_kwargs])
 
     model, tokenizer = load_policy(config, device=str(accelerator.device))
 
