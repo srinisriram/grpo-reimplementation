@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 
 import torch
 from peft import PeftModel
@@ -41,21 +42,34 @@ def _generate_deterministic(
     return texts, lengths
 
 
-def evaluate(config: TrainingConfig, checkpoint: str | None, num_examples: int, device: str) -> dict:
+def evaluate(config: TrainingConfig, checkpoint: str | None, num_examples: int, device: str, verbose: bool = True) -> dict:
+    if verbose:
+        print(f"  loading model{f' + adapter {checkpoint}' if checkpoint else ' (base, no adapter)'}...", flush=True)
+    load_start = time.time()
     model, tokenizer = _load_eval_model(config.model_name, checkpoint, device)
     examples = list(
         load_gsm8k("test", config=config.dataset_config).shuffle(seed=EVAL_SEED).select(range(num_examples))
     )
+    if verbose:
+        print(f"  model loaded in {time.time() - load_start:.1f}s, generating on {len(examples)} examples...", flush=True)
 
     rewards: list[float] = []
     lengths: list[int] = []
-    for start in range(0, len(examples), GENERATION_BATCH_SIZE):
+    num_batches = (len(examples) + GENERATION_BATCH_SIZE - 1) // GENERATION_BATCH_SIZE
+    for batch_idx, start in enumerate(range(0, len(examples), GENERATION_BATCH_SIZE), start=1):
+        batch_start = time.time()
         batch = examples[start:start + GENERATION_BATCH_SIZE]
         prompts = [format_prompt(example["question"]) for example in batch]
         completions, batch_lengths = _generate_deterministic(model, tokenizer, prompts, config.max_new_tokens, device)
         for example, completion in zip(batch, completions):
             rewards.append(gsm8k_reward(completion, example["answer"]))
         lengths.extend(batch_lengths)
+        if verbose:
+            print(
+                f"    batch {batch_idx}/{num_batches} ({len(rewards)}/{len(examples)} examples, "
+                f"{time.time() - batch_start:.1f}s) — running accuracy: {int(sum(rewards))}/{len(rewards)}",
+                flush=True,
+            )
 
     del model
     if device == "cuda":
