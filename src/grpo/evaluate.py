@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
 
 import torch
@@ -9,7 +10,7 @@ from peft import PeftModel
 from .config import TrainingConfig, load_config
 from .data import format_prompt, load_gsm8k
 from .modeling import load_base_model, load_tokenizer, resolve_device
-from .rewards import gsm8k_reward
+from .rewards import extract_final_answer, gsm8k_reward
 
 # Fixed independent of any training config's own seed, so every evaluation call
 # (baseline or any checkpoint) scores the exact same 100 test problems.
@@ -42,7 +43,10 @@ def _generate_deterministic(
     return texts, lengths
 
 
-def evaluate(config: TrainingConfig, checkpoint: str | None, num_examples: int, device: str, verbose: bool = True) -> dict:
+def evaluate(
+    config: TrainingConfig, checkpoint: str | None, num_examples: int, device: str,
+    verbose: bool = True, dump_path: str | None = None,
+) -> dict:
     if verbose:
         print(f"  loading model{f' + adapter {checkpoint}' if checkpoint else ' (base, no adapter)'}...", flush=True)
     load_start = time.time()
@@ -55,14 +59,26 @@ def evaluate(config: TrainingConfig, checkpoint: str | None, num_examples: int, 
 
     rewards: list[float] = []
     lengths: list[int] = []
+    records: list[dict] = []
     num_batches = (len(examples) + GENERATION_BATCH_SIZE - 1) // GENERATION_BATCH_SIZE
     for batch_idx, start in enumerate(range(0, len(examples), GENERATION_BATCH_SIZE), start=1):
         batch_start = time.time()
         batch = examples[start:start + GENERATION_BATCH_SIZE]
         prompts = [format_prompt(example["question"]) for example in batch]
         completions, batch_lengths = _generate_deterministic(model, tokenizer, prompts, config.max_new_tokens, device)
-        for example, completion in zip(batch, completions):
-            rewards.append(gsm8k_reward(completion, example["answer"]))
+        for example, completion, length in zip(batch, completions, batch_lengths):
+            reward = gsm8k_reward(completion, example["answer"])
+            rewards.append(reward)
+            if dump_path is not None:
+                records.append({
+                    "question": example["question"],
+                    "reference_answer": example["answer"].split("####")[-1].strip(),
+                    "predicted_answer": extract_final_answer(completion),
+                    "completion": completion,
+                    "length": length,
+                    "hit_token_cap": length >= config.max_new_tokens,
+                    "correct": reward == 1.0,
+                })
         lengths.extend(batch_lengths)
         if verbose:
             print(
@@ -74,6 +90,13 @@ def evaluate(config: TrainingConfig, checkpoint: str | None, num_examples: int, 
     del model
     if device == "cuda":
         torch.cuda.empty_cache()
+
+    if dump_path is not None:
+        with open(dump_path, "w") as handle:
+            for record in records:
+                handle.write(json.dumps(record) + "\n")
+        if verbose:
+            print(f"  wrote {len(records)} per-example records to {dump_path}", flush=True)
 
     correct_lengths = [length for length, reward in zip(lengths, rewards) if reward == 1.0]
     incorrect_lengths = [length for length, reward in zip(lengths, rewards) if reward == 0.0]
@@ -92,12 +115,17 @@ def main() -> None:
     parser.add_argument("--config", default="configs/full_run.yaml")
     parser.add_argument("--checkpoint", default=None, help="Path to a saved LoRA adapter; omit to evaluate the base model")
     parser.add_argument("--num_examples", type=int, default=None)
+    parser.add_argument(
+        "--dump_completions", default=None,
+        help="Write one JSON record per example (question, completion, predicted/reference answer, "
+             "length, hit_token_cap, correct) to this path, for diagnosing truncation/length issues.",
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     num_examples = args.num_examples or config.max_eval_examples or DEFAULT_NUM_EXAMPLES
     device = resolve_device()
 
-    results = evaluate(config, args.checkpoint, num_examples, device)
+    results = evaluate(config, args.checkpoint, num_examples, device, dump_path=args.dump_completions)
 
     label = args.checkpoint or "base model (no adapter)"
     print(f"Evaluated {label} on {results['num_examples']} GSM8K test examples (seed={EVAL_SEED})")
