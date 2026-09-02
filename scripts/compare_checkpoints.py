@@ -33,10 +33,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Compare base model vs. every checkpoint in a run")
     parser.add_argument("--config", default="configs/full_run.yaml")
     parser.add_argument("--num_examples", type=int, default=None)
+    parser.add_argument(
+        "--dump_dir", default=None,
+        help="If set, write per-example completions for every evaluated model to "
+             "<dump_dir>/completions_<name>.jsonl (base and each checkpoint).",
+    )
     args = parser.parse_args()
     config = load_config(args.config)
     num_examples = args.num_examples or config.max_eval_examples or DEFAULT_NUM_EXAMPLES
     device = resolve_device()
+    dump_dir = Path(args.dump_dir) if args.dump_dir else None
+    if dump_dir is not None:
+        dump_dir.mkdir(parents=True, exist_ok=True)
 
     checkpoints = _discover_checkpoints(config.output_dir)
     if not checkpoints:
@@ -47,7 +55,8 @@ def main() -> None:
 
     def run(name: str, checkpoint: str | None) -> None:
         print(f"\n=== Evaluating {name} ===", flush=True)
-        result = evaluate(config, checkpoint, num_examples, device)
+        dump_path = str(dump_dir / f"completions_{name}.jsonl") if dump_dir is not None else None
+        result = evaluate(config, checkpoint, num_examples, device, dump_path=dump_path)
         rows.append((name, result))
         print(f"  done: {_format_row(name, result)}", flush=True)
 

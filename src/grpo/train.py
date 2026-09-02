@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import math
 import random
 from pathlib import Path
 
 import torch
 from accelerate import Accelerator, DistributedDataParallelKwargs
+from torch.optim.lr_scheduler import LambdaLR
 from transformers import get_linear_schedule_with_warmup
 
 from .config import TrainingConfig, load_config
@@ -14,6 +16,26 @@ from .modeling import load_policy
 from .objective import completion_logprobs, group_relative_advantages, grpo_loss
 from .rewards import gsm8k_reward
 from .rollouts import RolloutBatch, generate_groups
+
+
+def _build_scheduler(optimizer: torch.optim.Optimizer, config: TrainingConfig):
+    if config.lr_scheduler == "linear":
+        return get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=config.warmup_steps, num_training_steps=config.max_steps,
+        )
+    if config.lr_scheduler == "cosine":
+        min_lr_ratio = config.min_learning_rate / config.learning_rate if config.learning_rate else 0.0
+
+        def lr_lambda(step: int) -> float:
+            if step < config.warmup_steps:
+                return step / max(1, config.warmup_steps)
+            progress = (step - config.warmup_steps) / max(1, config.max_steps - config.warmup_steps)
+            progress = min(progress, 1.0)
+            cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
+            return min_lr_ratio + (1 - min_lr_ratio) * cosine_decay
+
+        return LambdaLR(optimizer, lr_lambda)
+    raise ValueError(f"Unknown lr_scheduler: {config.lr_scheduler!r} (expected 'linear' or 'cosine')")
 
 
 def _reduce_mean(accelerator: Accelerator, value: float) -> float:
@@ -111,9 +133,7 @@ def main() -> None:
     )
 
     optimizer = torch.optim.AdamW(trainable_params, lr=config.learning_rate)
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=config.warmup_steps, num_training_steps=config.max_steps,
-    )
+    scheduler = _build_scheduler(optimizer, config)
     model, optimizer, scheduler = accelerator.prepare(model, optimizer, scheduler)
 
     save_steps = config.save_steps or config.max_steps

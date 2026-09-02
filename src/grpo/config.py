@@ -30,6 +30,8 @@ class TrainingConfig:
     ppo_epochs: int = 1
     save_steps: int | None = None
     warmup_steps: int = 0
+    lr_scheduler: str = "linear"
+    min_learning_rate: float = 0.0
 
 
 def load_config(path: str | Path) -> TrainingConfig:
@@ -49,5 +51,7 @@ def load_config(path: str | Path) -> TrainingConfig:
         max_eval_examples=data.get("max_eval_examples"),
         ppo_epochs=training.get("ppo_epochs", 1), save_steps=training.get("save_steps"),
         warmup_steps=training.get("warmup_steps", 0),
+        lr_scheduler=training.get("lr_scheduler", "linear"),
+        min_learning_rate=training.get("min_learning_rate", 0.0),
     )
 
