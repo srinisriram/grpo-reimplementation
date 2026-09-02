@@ -1,0 +1,25 @@
+seed: 7
+model:
+  name: Qwen/Qwen2.5-1.5B-Instruct
+  lora_rank: 8
+  lora_alpha: 16
+  target_modules: [q_proj, v_proj]
+data:
+  dataset: gsm8k
+  config: main
+  max_train_examples: 1000
+  max_eval_examples: 100
+training:
+  output_dir: outputs/full_run_300
+  per_device_batch_size: 2
+  group_size: 4
+  max_new_tokens: 512
+  learning_rate: 2.0e-5
+  max_steps: 300
+  gradient_accumulation_steps: 1
+  kl_coef: 0.04
+  clip_range: 0.2
+  seed: 7
+  ppo_epochs: 1
+  save_steps: 50
+  warmup_steps: 5
