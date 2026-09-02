@@ -4,6 +4,15 @@ A learning-first scaffold for implementing the algorithmic core of Group Relativ
 Policy Optimization (GRPO). Infrastructure is provided; the mathematical core is
 intentionally unimplemented in `src/grpo/objective.py`.
 
+## Status
+
+Phase 3 complete: baseline GRPO on Qwen2.5-1.5B produces a statistically significant
++14.2 point improvement on GSM8K (52.1% → 66.3%, n=1319 full test set, z=7.41 at the
+final checkpoint). See [`docs/phase3_results.md`](docs/phase3_results.md) for the full
+analysis, including the trajectory across training and known caveats.
+
+Phase 4 (extension) planning in progress.
+
 ## What you implement
 
 - completion-token log probabilities
