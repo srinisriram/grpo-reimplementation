@@ -12,7 +12,7 @@ data:
 training:
   output_dir: outputs/full_run
   per_device_batch_size: 2
-  group_size: 2
+  group_size: 4
   max_new_tokens: 512
   learning_rate: 2.0e-5
   max_steps: 100
